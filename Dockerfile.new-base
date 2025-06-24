@@ -1,0 +1,58 @@
+FROM python:3.11-alpine
+
+RUN apk add --no-cache \
+    gcc \
+    python3-dev \
+    openssl \
+    openssl-dev \
+    nodejs \
+    npm \
+    git \
+    curl \
+    tzdata
+
+WORKDIR /app
+RUN pip install --upgrade pip && pip install --upgrade "litellm[proxy]"
+
+COPY litellm-main/ ./litellm-main/
+
+COPY config.yaml /app/config.yaml
+
+RUN pip install --upgrade pip && \
+    pip install build
+
+WORKDIR /app/litellm-main
+RUN chmod +x docker/build_admin_ui.sh && ./docker/build_admin_ui.sh || echo "Admin UI build skipped (using default UI)"
+RUN rm -rf dist/* && python -m build
+RUN pip install dist/*.whl
+
+RUN pip wheel --no-cache-dir --wheel-dir=/wheels/ -r requirements.txt
+
+RUN pip install --no-cache-dir "PyJWT==2.9.0" "litellm[proxy]"
+
+
+RUN pip install 'litellm[proxy]' backoff
+RUN pip install google-auth google-api-python-client
+
+
+RUN npm install -g prisma
+RUN pip install prisma
+
+RUN prisma generate
+
+RUN chmod +x docker/entrypoint.sh
+RUN chmod +x docker/prod_entrypoint.sh
+
+WORKDIR /app/litellm-main/ui/litellm-dashboard
+RUN npm install
+RUN npm run build
+WORKDIR /app
+
+COPY config.yaml /app/config.yaml
+
+EXPOSE 4000 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:4000/health || exit 1
+
+CMD ["litellm", "--config", "/app/config.yaml", "--port", "4000"] 

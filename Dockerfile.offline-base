@@ -1,0 +1,26 @@
+FROM litellm-base1:latest
+
+RUN apk add --no-cache nodejs npm
+
+RUN python --version && node --version && npm --version
+
+WORKDIR /app
+
+COPY litellm-main/ui/litellm-dashboard/package*.json ./ui/
+
+
+WORKDIR /app/ui
+RUN npm install
+
+WORKDIR /app
+
+COPY litellm-main/ui/litellm-dashboard/ ./ui/
+
+COPY config.yaml /app/config.yaml
+
+EXPOSE 4000 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:4000/health || exit 1
+
+CMD ["litellm", "--config", "/app/config.yaml", "--port", "4000"] 

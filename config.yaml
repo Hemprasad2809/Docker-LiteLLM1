@@ -1,0 +1,26 @@
+# config.yaml
+model_list:
+  - model_name: openai-gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: "sk-1234"  # Use direct key or env var
+      temperature: 0.2
+
+  - model_name: azure-gpt-4
+    litellm_params:
+      model: azure/chatgpt-v-2
+      api_base: https://openai-gpt-4-test-v-1.openai.azure.com/
+      api_version: "2023-05-15"
+      azure_ad_token: "eyJ0eXAiOiJ"  # Use direct token or env var
+
+  - model_name: mistral-7b
+    litellm_params:
+      model: ollama/mistral
+      api_base: "http://ollama:11434"
+
+  - model_name: my-llama-finetune
+    python_filename: "custom_handlers/custom_handler.py"
+    custom_handler_instance_name: my_llama_cpp_llm
+    litellm_params:
+      model: custom/my-llama-finetune
+      api_base: http://model:8001

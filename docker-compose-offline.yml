@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  # Python Backend - LiteLLM API (completely offline)
+  litellm-backend-offline:
+    build:
+      context: .
+      dockerfile: Dockerfile.offline-base
+    ports:
+      - "4000:4000"
+    environment:
+      - STORE_MODEL_IN_DB=False
+      - TELEMETRY=False
+      - PORT=4000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - litellm-offline-network
+    command: ["litellm", "--config", "/app/config.yaml", "--port", "4000"]
+
+  # React Frontend - LiteLLM UI (completely offline)
+  litellm-frontend-offline:
+    build:
+      context: .
+      dockerfile: Dockerfile.offline-base
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+    depends_on:
+      - litellm-backend-offline
+    restart: unless-stopped
+    networks:
+      - litellm-offline-network
+    volumes:
+      # Mount UI source for development (optional)
+      - ./litellm-main/ui/litellm-dashboard/src:/app/ui/src
+      - ./litellm-main/ui/litellm-dashboard/public:/app/ui/public
+    working_dir: /app/ui
+    command: ["npm", "run", "dev"]
+
+networks:
+  litellm-offline-network:
+    driver: bridge 

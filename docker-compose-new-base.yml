@@ -1,0 +1,119 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres
+    environment:
+      POSTGRES_PASSWORD: example
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 1s
+      timeout: 5s
+      retries: 10
+    networks:
+      - litellm-network
+
+  model:
+      image: my-llama-cpp-model
+      container_name: mymodel1
+      command: ["-m", "/models/llama-2-7b-chat.Q4_K_M.gguf", "-c", "8", "--host", "0.0.0.0", "--port", "8001"]
+      volumes:
+        - ./llama-2-7b-chat.Q4_K_M.gguf:/models/llama-2-7b-chat.Q4_K_M.gguf
+      ports:
+        - "8001:8001"
+      networks:
+        - litellm-network
+      healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:8001"]
+        interval: 30s
+        timeout: 10s
+        retries: 3
+        start_period: 10s
+
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    networks:
+      - litellm-network
+    healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+        interval: 10s
+        timeout: 5s
+        retries: 10
+        start_period: 30s  # Give Ollama time to initialize
+
+  litellm-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend-new
+    ports:
+      - "4000:4000"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - NEXT_DISABLE_FAST_REFRESH=true
+      - LITELLM_MASTER_KEY=sk-1234
+      - LITELLM_SALT_KEY=sk-XXXXXXXX
+      - TELEMETRY=False
+      - PORT=4000
+      - VERBOSE=True
+      - STORE_MODEL_IN_DB=True
+      - DATABASE_URL=postgresql://postgres:example@postgres:5432/postgres
+      - OLLAMA_API_BASE=http://ollama:11434
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-H", "Authorization: Bearer sk-1234", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./litellm-main/ui/litellm-dashboard:/app/litellm-main/ui/litellm-dashboard
+      - ./custom_handlers:/app/custom_handlers  # ADD THIS
+
+    networks:
+      - litellm-network
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+
+  litellm-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend-new
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+      - NEXT_DISABLE_FAST_REFRESH=true
+      - REACT_APP_API_URL=http://litellm-backend:4000
+      - REACT_APP_BACKEND_URL=http://litellm-backend:4000
+      - REACT_APP_LITELLM_API_KEY=sk-1234
+    depends_on:
+      - litellm-backend
+    restart: unless-stopped
+    networks:
+      - litellm-network
+    volumes:
+      - ./litellm-main/ui/litellm-dashboard/src:/app/litellm-main/ui/litellm-dashboard/src
+      - ./litellm-main/ui/litellm-dashboard/public:/app/litellm-main/ui/litellm-dashboard/public
+      - ./litellm-main/.env:/app/litellm-main/.env
+    working_dir: /app/litellm-main/ui/litellm-dashboard
+    command: ["npm", "run", "dev"]
+
+networks:
+  litellm-network:
+    driver: bridge
+
+volumes:
+  pgdata:
+  ollama:

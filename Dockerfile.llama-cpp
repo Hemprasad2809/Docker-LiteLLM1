@@ -1,0 +1,27 @@
+FROM python:3.10-slim
+
+# Install required system packages
+RUN apt-get update && apt-get install -y \
+    git build-essential cmake libopenblas-dev libomp-dev wget libcurl4-openssl-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install llama-cpp-python with server dependencies (includes FastAPI, Uvicorn, etc.)
+RUN pip install --upgrade pip
+RUN pip install "llama-cpp-python[server]"
+
+# Clone and build llama.cpp to get libllama.so
+RUN git clone https://github.com/ggerganov/llama.cpp.git /llama && \
+    cd /llama && mkdir build && cd build && cmake .. && make
+
+# Set environment variable so llama-cpp-python knows where the .so is
+ENV LLAMA_CPP_LIB=/llama/build/libllama.so
+
+# Copy your fine-tuned model into the container
+COPY llama-2-7b-chat.Q4_K_M.gguf /models/llama-2-7b-chat.Q4_K_M.gguf
+
+# Expose server port
+EXPOSE 8001
+
+# Start the OpenAI-compatible FastAPI server
+ENTRYPOINT ["python3", "-m", "llama_cpp.server"]
+CMD ["--model", "/models/llama-2-7b-chat.Q4_K_M.gguf", "--host", "0.0.0.0", "--port", "8001"]
